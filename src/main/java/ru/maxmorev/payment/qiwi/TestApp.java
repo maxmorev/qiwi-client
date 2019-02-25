@@ -7,10 +7,10 @@ import java.util.List;
 public class TestApp {
 
 
-    public static void main(String[] args) {
+    public static void main(String... args) {
 
-        String token = "96cb82d84820171c774250e1ed082a99";//your qiwi token token
-        String phone = "79263926369"; //your qiwi wallet
+        String token = "";//your qiwi token token
+        String phone = ""; //your qiwi wallet
 
         QIWI qiwi = new QIWI( phone, token);
 

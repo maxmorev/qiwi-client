@@ -1,1 +1,2 @@
-# qiwi-client
+# Java qiwi-client Qiwi API
+

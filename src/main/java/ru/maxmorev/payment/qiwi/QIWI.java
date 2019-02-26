@@ -3,6 +3,7 @@ package ru.maxmorev.payment.qiwi;
 
 import org.apache.log4j.Logger;
 import org.springframework.http.*;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import ru.maxmorev.payment.qiwi.request.Transfer;
 import ru.maxmorev.payment.qiwi.response.*;
@@ -13,7 +14,7 @@ import java.util.List;
 
 /**
  *
- * Rest JAVA QIWI API
+ * REST JAVA QIWI API
  * @author maxmorev
  *
  */
@@ -29,7 +30,7 @@ public class QIWI {
     private double balanceRU;
 
     private HttpHeaders requestHeaders;
-    private boolean TOKENOK = false;
+    private boolean connected = false;
     private HttpEntity<?> httpEntity;
     private RestTemplate restTemplate;
     private String urlGETBalance = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
@@ -47,20 +48,20 @@ public class QIWI {
      *
      *     Откройте в браузере страницу https://qiwi.com/api. Для этого потребуется авторизоваться или зарегистрироваться в сервисе QIWI Кошелек.
      */
-    public QIWI(String phone, String token) {
+    public QIWI(String phone, String token)  throws RestClientException {
         super();
         this.token = token;
         this.phone = phone;
-        this.init();
+        this.login();
     }
 
-    public boolean isOk() {
-        return this.TOKENOK;
+    public boolean isConnected() {
+        return this.connected;
     }
 
 
 
-    private void init() {
+    private void login()  throws RestClientException {
         this.requestHeaders = new HttpHeaders();
         requestHeaders.setContentType(MediaType.APPLICATION_JSON);
         requestHeaders.set("Accept", "application/json");
@@ -71,22 +72,26 @@ public class QIWI {
         logger.debug("URL HISTORY:"+this.urlGETPaymentHistory);
         this.wallet = this.getBalance();
         if(this.wallet == null) {
-            logger.debug(";( fok");
+            logger.debug(";( Error");
             return;
         }
         this.setBalanceRU(this.wallet.getRuBalance());
         if(this.balanceRU==-404.0) {
             return;
         }
-        this.TOKENOK = true;
+        this.connected = true;
     }
 
-    private Wallet getBalance() {
+    private Wallet getBalance() throws RestClientException {
         logger.debug("GET BALANCE");
         logger.debug(httpEntity.getHeaders().toString());
+
         ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.urlGETBalance, HttpMethod.GET, this.httpEntity, Wallet.class);
         this.balance = resp.getBody();
+        balance.setMessage("OK");
+        balance.setStatus("OK");
         return balance;
+
     }
 
     /*
@@ -96,13 +101,19 @@ public class QIWI {
           --header "Accept: application/json"
      *
      */
-    private PaymentHistory getPaymentHistory(int count) {
+    private PaymentHistory getPaymentHistory(int count)  throws RestClientException {
         //rows=10
         ResponseEntity<PaymentHistory> resp = this.restTemplate.exchange(this.urlGETPaymentHistory+"rows="+count, HttpMethod.GET, this.httpEntity, PaymentHistory.class);
         return resp.getBody();
     }
 
-    public Transaction transferToWallet(String phoneReciver, double amount, String comment) {
+
+
+    /*
+     *  PUBLIC METHODS 4 USER
+     */
+
+    public Transaction transferToWallet(String phoneReciver, double amount, String comment)  throws RestClientException  {
 
         long timeStamp = new Date().getTime() ;
 
@@ -119,11 +130,8 @@ public class QIWI {
         return resp.getBody().getTransaction();
     }
 
-    /*
-     *  PUBLIC METHODS 4 USER
-     */
 
-    public double getBalanceRU() {
+    public double getBalanceRU() throws RestClientException{
         balanceRU = this.getBalance().getRuBalance();
         return balanceRU;
     }
@@ -132,7 +140,7 @@ public class QIWI {
         this.balanceRU = balanceRU;
     }
 
-    public List<Payment> getPaymentsLast(int count) {
+    public List<Payment> getPaymentsLast(int count)  throws RestClientException {
         PaymentHistory ph = this.getPaymentHistory(count);
         return ph.getData();
     }

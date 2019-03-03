@@ -8,6 +8,9 @@ import org.springframework.web.client.RestTemplate;
 import ru.maxmorev.payment.qiwi.request.Transfer;
 import ru.maxmorev.payment.qiwi.response.*;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.SocketAddress;
 import java.util.Date;
 import java.util.List;
 
@@ -23,7 +26,7 @@ public class QIWI {
 
     final static Logger logger = Logger.getLogger(QIWI.class);
 
-
+    private Date date;
     private String token;
     private String phone;
     private Wallet balance;
@@ -41,6 +44,12 @@ public class QIWI {
     private Wallet wallet;
 
 
+    String proxyServer = "";
+    String proxyPort = "";
+    SocketAddress socks;// new InetSocketAddress(proxyServer, Integer.parseInt(proxyPort));
+    Proxy proxy;// = new Proxy(Proxy.Type.SOCKS, socks);
+
+
     /**
      * @param phone - phone number 7926...
      * @param token - qiwi token
@@ -55,11 +64,33 @@ public class QIWI {
         this.login();
     }
 
+    public QIWI( String phone, String token, String socksServer, String socksPort )  throws RestClientException {
+        super();
+        this.token = token;
+        this.phone = phone;
+
+        proxyServer = socksServer;
+        proxyPort = socksPort;
+
+        socks = new InetSocketAddress(proxyServer, Integer.parseInt(proxyPort));
+
+        proxy = new Proxy(Proxy.Type.SOCKS, socks);
+        System.out.println("SOCKS OPTIONS: "+ proxy.address().toString());
+        this.login();
+    }
+
+
     public boolean isConnected() {
         return this.connected;
     }
 
+    public Date getDate() {
+        return date;
+    }
 
+    public void setDate(Date date) {
+        this.date = date;
+    }
 
     private void login()  throws RestClientException {
         this.requestHeaders = new HttpHeaders();
@@ -71,25 +102,14 @@ public class QIWI {
         this.urlGETPaymentHistory = "https://edge.qiwi.com/payment-history/v1/persons/"+this.phone+"/payments?";
         logger.debug("URL HISTORY:"+this.urlGETPaymentHistory);
         this.wallet = this.getBalance();
-        if(this.wallet == null) {
-            logger.debug(";( Error");
-            return;
-        }
-        this.setBalanceRU(this.wallet.getRuBalance());
-        if(this.balanceRU==-404.0) {
-            return;
-        }
         this.connected = true;
     }
 
     private Wallet getBalance() throws RestClientException {
         logger.debug("GET BALANCE");
         logger.debug(httpEntity.getHeaders().toString());
-
         ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.urlGETBalance, HttpMethod.GET, this.httpEntity, Wallet.class);
         this.balance = resp.getBody();
-        balance.setMessage("OK");
-        balance.setStatus("OK");
         return balance;
 
     }
@@ -113,6 +133,15 @@ public class QIWI {
      *  PUBLIC METHODS 4 USER
      */
 
+    /**
+     *  https://developer.qiwi.com/en/qiwi-wallet-personal/index.html#p2p
+     *
+     * @param phoneReciver qiwi wallet (phone number example 792938383838) Номер телефона получателя (с международным префиксом)
+     * @param amount Сумма
+     * @param comment comment for payment
+     * @return @Transaction
+     * @throws RestClientException
+     */
     public Transaction transferToWallet(String phoneReciver, double amount, String comment)  throws RestClientException  {
 
         long timeStamp = new Date().getTime() ;
@@ -132,17 +161,8 @@ public class QIWI {
 
 
     public double getBalanceRU() throws RestClientException{
-        balanceRU = this.getBalance().getRuBalance();
+        balanceRU = this.getBalance().getBalanceRub();
         return balanceRU;
-    }
-
-    private void setBalanceRU(double balanceRU) {
-        this.balanceRU = balanceRU;
-    }
-
-    public List<Payment> getPaymentsLast(int count)  throws RestClientException {
-        PaymentHistory ph = this.getPaymentHistory(count);
-        return ph.getData();
     }
 
     @Override
@@ -173,7 +193,6 @@ public class QIWI {
     public String getPhone() {
         return phone;
     }
-
 
 
 

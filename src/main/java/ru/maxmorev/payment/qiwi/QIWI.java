@@ -28,13 +28,15 @@ public class QIWI {
     private Wallet balance;
     private double balanceRU;
 
+    private static final String URL_GET_BALANCE = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
+    private static final String URL_POST_PAYMENT_TRANSFER = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
+    private String urlGETPaymentHistory;
+
+
     private HttpHeaders requestHeaders;
     private boolean connected = false;
     private HttpEntity<?> httpEntity;
     private RestTemplate restTemplate;
-    private String urlGETBalance = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
-    private String urlGETPaymentHistory = "https://edge.qiwi.com/payment-history/v1/persons/<79112223344>/payments?";
-    private String urlPOSTPaymentTransfer = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
 
     private Wallet wallet;
 
@@ -106,11 +108,11 @@ public class QIWI {
 
         Transfer walletTransfer = new Transfer(String.valueOf(timeStamp), amount, comment, phoneReciver);
         HttpEntity<?> httpEntityTransfer = new HttpEntity<Transfer>(walletTransfer, this.requestHeaders);
-        logger.debug("HttpEntity "+this.urlPOSTPaymentTransfer);
+        logger.debug("HttpEntity "+this.URL_POST_PAYMENT_TRANSFER);
         logger.debug(httpEntityTransfer.getHeaders());
         logger.debug(httpEntityTransfer.getBody());
 
-        ResponseEntity<TransferResponse> resp =  this.restTemplate.exchange(this.urlPOSTPaymentTransfer, HttpMethod.POST, httpEntityTransfer, TransferResponse.class);
+        ResponseEntity<TransferResponse> resp =  this.restTemplate.exchange(this.URL_POST_PAYMENT_TRANSFER, HttpMethod.POST, httpEntityTransfer, TransferResponse.class);
         logger.debug("########RESPONSE");
         logger.debug(resp.getHeaders());
         logger.debug(resp.getBody());
@@ -121,7 +123,7 @@ public class QIWI {
         logger.debug("GET BALANCE");
         logger.debug(httpEntity.getHeaders().toString());
 
-        ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.urlGETBalance, HttpMethod.GET, this.httpEntity, Wallet.class);
+        ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.URL_GET_BALANCE, HttpMethod.GET, this.httpEntity, Wallet.class);
         this.balance = resp.getBody();
         balance.setMessage("OK");
         balance.setStatus("OK");

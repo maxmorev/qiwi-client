@@ -6,13 +6,11 @@ import org.springframework.http.*;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import ru.maxmorev.payment.qiwi.request.Transfer;
-import ru.maxmorev.payment.qiwi.response.*;
-
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.net.SocketAddress;
+import ru.maxmorev.payment.qiwi.response.PaymentHistory;
+import ru.maxmorev.payment.qiwi.response.Transaction;
+import ru.maxmorev.payment.qiwi.response.TransferResponse;
+import ru.maxmorev.payment.qiwi.response.Wallet;
 import java.util.Date;
-import java.util.List;
 
 
 /**
@@ -31,7 +29,6 @@ public class QIWI {
     private String phone;
     private Wallet balance;
     private double balanceRU;
-
     private HttpHeaders requestHeaders;
     private boolean connected = false;
     private HttpEntity<?> httpEntity;
@@ -39,15 +36,7 @@ public class QIWI {
     private String urlGETBalance = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
     private String urlGETPaymentHistory = "https://edge.qiwi.com/payment-history/v1/persons/<79112223344>/payments?";
     private String urlPOSTPaymentTransfer = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
-    //private String urlPOSTPaymentTransfer = "http://localhost:8080/test";
-
     private Wallet wallet;
-
-
-    String proxyServer = "";
-    String proxyPort = "";
-    SocketAddress socks;// new InetSocketAddress(proxyServer, Integer.parseInt(proxyPort));
-    Proxy proxy;// = new Proxy(Proxy.Type.SOCKS, socks);
 
 
     /**
@@ -63,22 +52,6 @@ public class QIWI {
         this.phone = phone;
         this.login();
     }
-
-    public QIWI( String phone, String token, String socksServer, String socksPort )  throws RestClientException {
-        super();
-        this.token = token;
-        this.phone = phone;
-
-        proxyServer = socksServer;
-        proxyPort = socksPort;
-
-        socks = new InetSocketAddress(proxyServer, Integer.parseInt(proxyPort));
-
-        proxy = new Proxy(Proxy.Type.SOCKS, socks);
-        System.out.println("SOCKS OPTIONS: "+ proxy.address().toString());
-        this.login();
-    }
-
 
     public boolean isConnected() {
         return this.connected;

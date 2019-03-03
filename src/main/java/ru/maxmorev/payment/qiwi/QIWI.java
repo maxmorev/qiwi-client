@@ -6,11 +6,9 @@ import org.springframework.http.*;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import ru.maxmorev.payment.qiwi.request.Transfer;
-import ru.maxmorev.payment.qiwi.response.PaymentHistory;
-import ru.maxmorev.payment.qiwi.response.Transaction;
-import ru.maxmorev.payment.qiwi.response.TransferResponse;
-import ru.maxmorev.payment.qiwi.response.Wallet;
+import ru.maxmorev.payment.qiwi.response.*;
 import java.util.Date;
+import java.util.List;
 
 
 /**
@@ -29,6 +27,7 @@ public class QIWI {
     private String phone;
     private Wallet balance;
     private double balanceRU;
+
     private HttpHeaders requestHeaders;
     private boolean connected = false;
     private HttpEntity<?> httpEntity;
@@ -36,6 +35,7 @@ public class QIWI {
     private String urlGETBalance = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
     private String urlGETPaymentHistory = "https://edge.qiwi.com/payment-history/v1/persons/<79112223344>/payments?";
     private String urlPOSTPaymentTransfer = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
+
     private Wallet wallet;
 
 
@@ -52,6 +52,7 @@ public class QIWI {
         this.phone = phone;
         this.login();
     }
+
 
     public boolean isConnected() {
         return this.connected;
@@ -78,33 +79,17 @@ public class QIWI {
         this.connected = true;
     }
 
-    private Wallet getBalance() throws RestClientException {
-        logger.debug("GET BALANCE");
-        logger.debug(httpEntity.getHeaders().toString());
-        ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.urlGETBalance, HttpMethod.GET, this.httpEntity, Wallet.class);
-        this.balance = resp.getBody();
-        return balance;
-
-    }
-
-    /*
-     * Пример 1. Последние 10 платежей
-
-        user@server:~$ curl "https://edge.qiwi.com/payment-history/v1/persons/79112223344/payments?rows=10"
-          --header "Accept: application/json"
-     *
-     */
-    private PaymentHistory getPaymentHistory(int count)  throws RestClientException {
-        //rows=10
-        ResponseEntity<PaymentHistory> resp = this.restTemplate.exchange(this.urlGETPaymentHistory+"rows="+count, HttpMethod.GET, this.httpEntity, PaymentHistory.class);
-        return resp.getBody();
+    public List<Payment> getPaymentsLast(int count)  throws RestClientException {
+        PaymentHistory ph = this.getPaymentHistory(count);
+        return ph.getData();
     }
 
 
+    public double getBalanceRU() throws RestClientException{
+        balanceRU = this.getBalance().getBalanceRub();
+        return balanceRU;
+    }
 
-    /*
-     *  PUBLIC METHODS 4 USER
-     */
 
     /**
      *  https://developer.qiwi.com/en/qiwi-wallet-personal/index.html#p2p
@@ -132,11 +117,36 @@ public class QIWI {
         return resp.getBody().getTransaction();
     }
 
+    private Wallet getBalance() throws RestClientException {
+        logger.debug("GET BALANCE");
+        logger.debug(httpEntity.getHeaders().toString());
 
-    public double getBalanceRU() throws RestClientException{
-        balanceRU = this.getBalance().getBalanceRub();
-        return balanceRU;
+        ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.urlGETBalance, HttpMethod.GET, this.httpEntity, Wallet.class);
+        this.balance = resp.getBody();
+        balance.setMessage("OK");
+        balance.setStatus("OK");
+        return balance;
+
     }
+
+    /**
+     * Пример 1. Последние 10 платежей
+
+        user@server:~$ curl "https://edge.qiwi.com/payment-history/v1/persons/79112223344/payments?rows=10"
+          --header "Accept: application/json"
+     *
+     */
+    private PaymentHistory getPaymentHistory(int count)  throws RestClientException {
+        //rows=10
+        ResponseEntity<PaymentHistory> resp = this.restTemplate.exchange(this.urlGETPaymentHistory+"rows="+count, HttpMethod.GET, this.httpEntity, PaymentHistory.class);
+        return resp.getBody();
+    }
+
+
+    private void setBalanceRU(double balanceRU) {
+        this.balanceRU = balanceRU;
+    }
+
 
     @Override
     public int hashCode() {

@@ -4,6 +4,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PaymentHistory {
+
+	public enum PaymentType {
+		PAYMENT_IN, PAYMENT_OUT, INDEFERENT
+	}
+
 	private List<Payment> data;
 
 	public List<Payment> getData() {

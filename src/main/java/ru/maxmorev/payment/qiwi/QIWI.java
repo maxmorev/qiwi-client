@@ -1,19 +1,29 @@
 package ru.maxmorev.payment.qiwi;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.log4j.Logger;
-import org.springframework.http.*;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
-import ru.maxmorev.payment.qiwi.request.Transfer;
+import ru.maxmorev.payment.qiwi.request.Field;
+import ru.maxmorev.payment.qiwi.request.WalletTransfer;
 import ru.maxmorev.payment.qiwi.response.*;
-import java.util.Date;
+
+import javax.net.ssl.HttpsURLConnection;
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.ProtocolException;
+import java.net.Proxy;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.util.List;
+import java.util.Objects;
 
 
 /**
  *
  * REST JAVA QIWI API
+ *
  * @author maxmorev
  *
  */
@@ -22,163 +32,292 @@ public class QIWI {
 
     final static Logger logger = Logger.getLogger(QIWI.class);
 
-    private Date date;
     private String token;
     private String phone;
-    private Wallet balance;
-    private double balanceRU;
-
-    private static final String URL_GET_BALANCE = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
-    private static final String URL_POST_PAYMENT_TRANSFER = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
-    private String urlGETPaymentHistory;
-
-
-    private HttpHeaders requestHeaders;
-    private boolean connected = false;
-    private HttpEntity<?> httpEntity;
-    private RestTemplate restTemplate;
-
-    private Wallet wallet;
+    private Proxy proxy;
 
 
     /**
+     * To release a token, follow these steps:
+     * Open the page in the browser https://qiwi.com/api
+     * To do this, you will need to log in or register in the QIWI Wallet service.
+     *
      * @param phone - phone number 7926...
      * @param token - qiwi token
-     *              Для выпуска токена выполните следующие шаги:
      *
-     *     Откройте в браузере страницу https://qiwi.com/api. Для этого потребуется авторизоваться или зарегистрироваться в сервисе QIWI Кошелек.
      */
-    public QIWI(String phone, String token)  throws RestClientException {
+    public QIWI(String phone, String token) throws ResponeParsingQiwiException, UnknownHostException, AuthorizationQiwiException {
         super();
+        Objects.requireNonNull(phone, " phone must be not null");
+        Objects.requireNonNull(token, " token must be not null");
         this.token = token;
         this.phone = phone;
-        this.login();
+        getBalance();
     }
 
 
-    public boolean isConnected() {
-        return this.connected;
+
+    public double getBalanceRub() throws ResponeParsingQiwiException, UnknownHostException, AuthorizationQiwiException {
+        return this.getBalance().getBalanceRub();
     }
 
-    public Date getDate() {
-        return date;
-    }
+    public Wallet getBalance() throws AuthorizationQiwiException, UnknownHostException, ResponeParsingQiwiException {
+        Wallet wallet = null;
+        String responseString = sendGetBalance();
 
-    public void setDate(Date date) {
-        this.date = date;
-    }
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            wallet = mapper.readValue(responseString, Wallet.class);
+        } catch (IOException e) {
+            throw new ResponeParsingQiwiException(" exception in parsing response: " + responseString +"\n" + e.getMessage());
+        }
 
-    private void login()  throws RestClientException {
-        this.requestHeaders = new HttpHeaders();
-        requestHeaders.setContentType(MediaType.APPLICATION_JSON);
-        requestHeaders.set("Accept", "application/json");
-        requestHeaders.set("Authorization", "Bearer "+token);
-        this.httpEntity = new HttpEntity<String>(requestHeaders);
-        this.restTemplate = new RestTemplate();
-        this.urlGETPaymentHistory = "https://edge.qiwi.com/payment-history/v1/persons/"+this.phone+"/payments?";
-        logger.debug("URL HISTORY:"+this.urlGETPaymentHistory);
-        this.wallet = this.getBalance();
-        this.connected = true;
-    }
-
-    public List<Payment> getPaymentsLast(int count)  throws RestClientException {
-        PaymentHistory ph = this.getPaymentHistory(count);
-        return ph.getData();
+        return wallet;
     }
 
 
-    public double getBalanceRU() throws RestClientException{
-        balanceRU = this.getBalance().getBalanceRub();
-        return balanceRU;
+
+    private String sendGetBalance() throws AuthorizationQiwiException, UnknownHostException {
+
+        String url = "https://edge.qiwi.com/funding-sources/v1/accounts/current";
+        return getResponseFromGET(url);
+
+    }
+
+    private String getResponseFromGET(String url) throws AuthorizationQiwiException, UnknownHostException {
+        HttpsURLConnection connection = null;
+        try {
+
+            URL urlGet = new URL(url);
+
+            connection = proxy != null ? (HttpsURLConnection) urlGet.openConnection(proxy) : (HttpsURLConnection) urlGet.openConnection();
+
+            prepareConnectionHeaders(connection, "GET");
+
+            int responseCode = connection.getResponseCode();
+            logger.debug("\nSending 'GET' request to URL : " + url);
+            logger.debug("Response Code : " + responseCode);
+
+            if (responseCode == 200) {
+                String resp = null;
+                resp = readStringFromResponse(connection);
+                connection.disconnect();
+                return resp;
+            }else{
+                connection.disconnect();
+                throw new AuthorizationQiwiException(" problems with your token: " + token);
+            }
+
+        }catch (java.io.IOException ioEsception){
+            if(ioEsception instanceof UnknownHostException){
+                throw new UnknownHostException(ioEsception.getMessage());
+            }
+
+        }finally {
+            if(connection!=null) connection.disconnect();
+        }
+        return null;
+    }
+
+
+    private void prepareConnectionHeaders(HttpsURLConnection connection, String method) throws ProtocolException {
+        connection.setRequestMethod(method);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Authorization", "Bearer " + token);
+        connection.setRequestProperty("Content-type", "application/json");
+        connection.setRequestProperty("Host", "edge.qiwi.com");
+    }
+
+    private String readStringFromResponse(HttpsURLConnection con) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+        String inputLine;
+
+        StringBuffer response = new StringBuffer();
+        while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+
+        }
+        in.close();
+        return response.toString();
+    }
+
+    /**
+     *
+     * The history of payments and recharge your wallet.
+     *
+     * @param rows The number of payments in the response, for breaking the report into parts. An integer from 1 to 50. Required
+     * @return
+     * @throws AuthorizationQiwiException
+     * @throws UnknownHostException
+     * @throws ResponeParsingQiwiException
+     */
+
+    public List<Payment> getPaymentsHistory(int rows, PaymentHistory.PaymentType paymentType) throws AuthorizationQiwiException, UnknownHostException, ResponeParsingQiwiException {
+        if(rows<1)
+            throw new IllegalArgumentException("Illegal rows: " + rows);
+        if(rows>50)
+            rows = 50; //max rows of rows
+
+        String responseString;
+        switch (paymentType){
+            case INDEFERENT:
+                responseString = sendGetHistory(rows);
+                break;
+            case PAYMENT_IN:
+                responseString = sendGetHistoryIn(rows);
+                break;
+            case PAYMENT_OUT:
+                responseString = sendGetHistoryOut(rows);
+                break;
+
+                default:
+                    responseString = sendGetHistory(rows);
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            PaymentHistory ph = mapper.readValue(responseString, PaymentHistory.class);
+            return ph.getData();
+        } catch (IOException e) {
+            throw new ResponeParsingQiwiException(" exception in parsing response: " + responseString +"\n" + e.getMessage());
+        }
+
+    }
+
+    private String sendGetHistory(Integer rows) throws AuthorizationQiwiException, UnknownHostException {
+
+        String url = "https://edge.qiwi.com/payment-history/v1/persons/{wallet}/payments?rows={rows}";
+        url = url.replace("{wallet}", phone);
+        url = url.replace("{rows}", rows.toString());
+
+        return getResponseFromGET(url);
+
+    }
+
+
+    private String sendGetHistoryIn(Integer rows) throws AuthorizationQiwiException, UnknownHostException {
+
+        String url = "https://edge.qiwi.com/payment-history/v1/persons/{wallet}/payments?rows={rows}&operation=IN";
+        url = url.replace("{wallet}", phone);
+        url = url.replace("{rows}", rows.toString());
+
+        return getResponseFromGET(url);
+
+    }
+
+    private String sendGetHistoryOut(Integer rows) throws AuthorizationQiwiException, UnknownHostException {
+
+        String url = "https://edge.qiwi.com/payment-history/v1/persons/{wallet}/payments?rows={rows}&operation=OUT";
+        url = url.replace("{wallet}", phone);
+        url = url.replace("{rows}", rows.toString());
+
+        return getResponseFromGET(url);
+
     }
 
 
     /**
-     *  https://developer.qiwi.com/en/qiwi-wallet-personal/index.html#p2p
+     * Peer-to-Peer QIWI Wallet Transfer
      *
-     * @param phoneReciver qiwi wallet (phone number example 792938383838) Номер телефона получателя (с международным префиксом)
-     * @param amount Сумма
-     * @param comment comment for payment
-     * @return @Transaction
-     * @throws RestClientException
-     */
-    public Transaction transferToWallet(String phoneReciver, double amount, String comment)  throws RestClientException  {
-
-        long timeStamp = new Date().getTime() ;
-
-        Transfer walletTransfer = new Transfer(String.valueOf(timeStamp), amount, comment, phoneReciver);
-        HttpEntity<?> httpEntityTransfer = new HttpEntity<Transfer>(walletTransfer, this.requestHeaders);
-        logger.debug("HttpEntity "+this.URL_POST_PAYMENT_TRANSFER);
-        logger.debug(httpEntityTransfer.getHeaders());
-        logger.debug(httpEntityTransfer.getBody());
-
-        ResponseEntity<TransferResponse> resp =  this.restTemplate.exchange(this.URL_POST_PAYMENT_TRANSFER, HttpMethod.POST, httpEntityTransfer, TransferResponse.class);
-        logger.debug("########RESPONSE");
-        logger.debug(resp.getHeaders());
-        logger.debug(resp.getBody());
-        return resp.getBody().getTransaction();
-    }
-
-    private Wallet getBalance() throws RestClientException {
-        logger.debug("GET BALANCE");
-        logger.debug(httpEntity.getHeaders().toString());
-
-        ResponseEntity<Wallet> resp = this.restTemplate.exchange(this.URL_GET_BALANCE, HttpMethod.GET, this.httpEntity, Wallet.class);
-        this.balance = resp.getBody();
-        balance.setMessage("OK");
-        balance.setStatus("OK");
-        return balance;
-
-    }
-
-    /**
-     * Пример 1. Последние 10 платежей
-
-        user@server:~$ curl "https://edge.qiwi.com/payment-history/v1/persons/79112223344/payments?rows=10"
-          --header "Accept: application/json"
+     * @param phoneReciver Recipient's phone number (with international prefix)
+     * @param amount Amount
+     * @param comment can be null
+     * @return TransferResponse - information about transaction:
+     *         TransferResponse tr = qiwi.transferToWallet("7926...", 250.0d, "Thank you Maxim");
+     *         if(tr.getTransaction().getState().getCode()==State.CODE_ACCEPTED){
+     *             System.out.println( "id of accepted transaction " + tr.getTransaction().getId() );
+     *         }
      *
+     * @throws AuthorizationQiwiException you must correctly release the token:
+     * mark down the option to transfer funds
+     * @throws UnknownHostException
+     * @throws ResponeParsingQiwiException
      */
-    private PaymentHistory getPaymentHistory(int count)  throws RestClientException {
-        //rows=10
-        ResponseEntity<PaymentHistory> resp = this.restTemplate.exchange(this.urlGETPaymentHistory+"rows="+count, HttpMethod.GET, this.httpEntity, PaymentHistory.class);
-        return resp.getBody();
-    }
+    public TransferResponse transferToWallet(String phoneReciver, double amount, String comment) throws AuthorizationQiwiException, UnknownHostException, ResponeParsingQiwiException {
 
+        TransferResponse tr = null;
+        String url = "https://edge.qiwi.com/sinap/api/v2/terms/99/payments";
 
-    private void setBalanceRU(double balanceRU) {
-        this.balanceRU = balanceRU;
-    }
+        String responseString = getResponseFromPOST(url, makeBodyWalletTransfer(phoneReciver, amount, comment) );
 
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            tr = mapper.readValue(responseString, TransferResponse.class);
+        } catch (IOException e) {
+            throw new ResponeParsingQiwiException(" exception in parsing response: " + responseString +"\n" + e.getMessage());
+        }
 
-    @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + ((phone == null) ? 0 : phone.hashCode());
-        result = prime * result + ((token == null) ? 0 : token.hashCode());
-        return result;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj) return true;
-        if (obj == null) return false;
-        if (getClass() != obj.getClass()) return false;
-        QIWI other = (QIWI) obj;
-        if(this.token.equals(other.token) && this.phone.equals(other.phone)) { return true;} else {return false;}
-
-    }
-
-    public String getToken() {
-        return token;
+        return tr;
     }
 
 
 
-    public String getPhone() {
-        return phone;
+    private static String makeBodyWalletTransfer(String phoneReciver, Double amount, String comment) {
+
+        Objects.requireNonNull(phoneReciver, " phone must be not null");
+        Objects.requireNonNull(amount, " amount must be not null");
+        if(amount<=0.0d)
+            throw new IllegalArgumentException("Illegal amount: " + amount);
+
+
+        WalletTransfer walletTransfer = new WalletTransfer();
+
+        if(comment==null)
+            walletTransfer.setComment("");
+        else
+            walletTransfer.setComment(comment);
+
+        walletTransfer.setSum(new Amount(amount));
+        walletTransfer.setFields(new Field(phoneReciver));
+        logger.info("bodyTransfer: \n" + walletTransfer.toString());
+
+        return walletTransfer.toString();
+
     }
 
+
+    private String getResponseFromPOST(String url, String body) throws AuthorizationQiwiException, UnknownHostException {
+        HttpsURLConnection connection = null;
+        try {
+
+            URL urlGet = new URL(url);
+
+            connection = proxy != null ? (HttpsURLConnection) urlGet.openConnection(proxy) : (HttpsURLConnection) urlGet.openConnection();
+
+            prepareConnectionHeaders(connection, "POST");
+
+            connection.setDoOutput( true );
+
+            DataOutputStream wr = new DataOutputStream(connection.getOutputStream());
+            wr.writeBytes( body );
+            wr.flush();
+            wr.close();
+
+
+            int responseCode = connection.getResponseCode();
+            logger.debug("\nSending 'POST' request to URL : " + url);
+            logger.debug("Response Code : " + responseCode);
+
+            if (responseCode == 200) {
+                String resp = null;
+                resp = readStringFromResponse(connection);
+                connection.disconnect();
+                return resp;
+            }else{
+                connection.disconnect();
+                throw new AuthorizationQiwiException("Error code "+ responseCode + " problems with your token: " + token );
+            }
+
+        }catch (java.io.IOException ioEsception){
+            if(ioEsception instanceof UnknownHostException){
+                throw new UnknownHostException(ioEsception.getMessage());
+            }
+
+        }finally {
+            if(connection!=null) connection.disconnect();
+        }
+        return null;
+    }
 
 
 

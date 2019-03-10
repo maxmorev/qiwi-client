@@ -1,47 +1,36 @@
 package ru.maxmorev.payment.qiwi;
 
-import org.springframework.web.client.RestClientException;
 import ru.maxmorev.payment.qiwi.response.Payment;
+import ru.maxmorev.payment.qiwi.response.PaymentHistory;
+import ru.maxmorev.payment.qiwi.response.State;
+import ru.maxmorev.payment.qiwi.response.TransferResponse;
 
+import java.net.UnknownHostException;
 import java.util.List;
 
 public class TestApp {
 
 
-    public static void main(String... args) {
+    public static void main(String... args) throws ResponeParsingQiwiException, UnknownHostException, AuthorizationQiwiException {
 
         String token = "";//your qiwi token token
-        String phone = "79263.."; //your qiwi wallet
+        String phone = "7926..."; //your qiwi wallet
+        System.out.println("TEST QIWI API");
 
-        System.out.println("2. TEST QIWI API GET BALANCE RU");
+        QIWI qiwi = new QIWI( phone, token);
 
-        QIWI qiwi = null;
-        try{
-            qiwi = new QIWI( phone, token);
+        double balanceRub = qiwi.getBalanceRub();
+        System.out.println("Balance: " + balanceRub);
+
+
+        List<Payment> paymentList = qiwi.getPaymentsHistory(20, PaymentHistory.PaymentType.INDEFERENT);
+        System.out.println("Payments History size: " + paymentList.size());
+
+        TransferResponse tr = qiwi.transferToWallet("79263926369", 100.0d, "Thank you");
+        if(tr.getTransaction().getState().getCode()==State.CODE_ACCEPTED){
+            System.out.println( "id of accepted transaction " + tr.getTransaction().getId() );
         }
-        catch (RestClientException ex){
-            System.out.println("Probably error in phone or token: " + ex.getMessage());
-        }
-
-        if(qiwi!=null && qiwi.isConnected()) {
-
-            System.out.println("QIWI BALCNCE: " + qiwi.getBalanceRU());
-
-
-            List<Payment> payments = null;
-            try{
-                payments = qiwi.getPaymentsLast(3);
-            }catch (RestClientException ex){
-                System.out.println("Error in REST" + ex.getMessage());
-            }
-            if(payments!=null) {
-                System.out.println("Payment list size: " + payments.size());
-                for (Payment pay : payments) {
-                    System.out.println(pay.toString());
-                }
-            }
-        }
-
+        System.out.println(tr);
 
     }
 

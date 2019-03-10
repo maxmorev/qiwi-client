@@ -10,54 +10,32 @@ Supported Operations & Examples
 #### Login
 
 ```java
-            // Login with phone number and token
-            String token = "";//your qiwi token token
-            String phone = "79263.."; //your qiwi wallet
-            System.out.println("2. TEST QIWI API GET BALANCE RU");
+            QIWI qiwi = new QIWI( phone, token);
             
-            QIWI qiwi = null;
-            try{
-                qiwi = new QIWI( phone, token);
-            }catch (RestClientException ex){
-                System.out.println("Probably error in phone or token: " + ex.getMessage());
-            }
-            
-            if( qiwi!=null ) {
-                System.out.println("QIWI BALCNCE: " + qiwi.getBalanceRU());
-            }
+            double balanceRub = qiwi.getBalanceRub();
+            System.out.println("Balance: " + balanceRub);
 ```
 #### Payments History
 
 ```java
-            List<Payment> payments = null;
-            try{
-                payments = qiwi.getPaymentsLast(3);
-            }catch (RestClientException ex){
-                System.out.println("Error in REST" + ex.getMessage());
-            }
-            if(payments!=null) {
-                System.out.println("Payment list size: " + payments.size());
-                for (Payment pay : payments) {
-                    System.out.println(pay.toString());
-                }
-            }
+            
+        List<Payment> paymentList = qiwi.getPaymentsHistory(20, PaymentHistory.PaymentType.INDEFERENT);
+        System.out.println("Payments History size: " + paymentList.size());
 ```
 #### Peer-to-Peer QIWI Wallet Transfer
 
 ```java
-                Transaction transaction = null;
-                try{
-                    transaction = qiwi.transferToWallet("79112223344", 100.0, "Comment");
-                }catch  (RestClientException ex){
-                    System.out.println("Error in REST" + ex.getMessage());
+                TransferResponse tr = qiwi.transferToWallet("79263926369", 100.0d, "Thank you");
+                if(tr.getTransaction().getState().getCode()==State.CODE_ACCEPTED){
+                    System.out.println( "id of accepted transaction " + tr.getTransaction().getId() );
                 }
-                if(transaction!=null){
-                    System.out.println("Transaction id " + transaction.getId());
-                }
+                System.out.println(tr);
 ```
 
 #### Balance
 
 ```java
-                qiwi.getBalanceRU();
+                qiwi.getBalanceRub();
 ```
+
+use http://www.jsonschema2pojo.org/ site to generate Java POJO
